@@ -1,3 +1,4 @@
 .idea/
 /chip8
 .DS_Store
+*.ch8
