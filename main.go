@@ -19,6 +19,14 @@ type Game struct {
 	delayTimer uint8
 	soundTimer uint8
 	V          [16]uint8
+	keys       [16]bool
+}
+
+var keymap = map[uint8]ebiten.Key{
+	0x1: ebiten.Key1, 0x2: ebiten.Key2, 0x3: ebiten.Key3, 0xC: ebiten.Key4,
+	0x4: ebiten.KeyQ, 0x5: ebiten.KeyW, 0x6: ebiten.KeyE, 0xD: ebiten.KeyR,
+	0x7: ebiten.KeyA, 0x8: ebiten.KeyS, 0x9: ebiten.KeyD, 0xE: ebiten.KeyF,
+	0xA: ebiten.KeyZ, 0x0: ebiten.KeyX, 0xB: ebiten.KeyC, 0xF: ebiten.KeyV,
 }
 
 var font = [...]byte{
@@ -167,12 +175,74 @@ func (g *Game) step() {
 				g.display[y+row][x+col] = !g.display[y+row][x+col]
 			}
 		}
+	case 0xE:
+		switch NN {
+		case 0x9E:
+			if g.keys[g.V[X]] {
+				g.PC += 2
+			}
+		case 0xA1:
+			if !g.keys[g.V[X]] {
+				g.PC += 2
+			}
+		}
+	case 0xF:
+		switch NN {
+		case 0x07:
+			g.V[X] = g.delayTimer
+		case 0x15:
+			g.delayTimer = g.V[X]
+		case 0x18:
+			g.soundTimer = g.V[X]
+		case 0x1E:
+			sum := g.I + uint16(g.V[X])
+			g.I = sum
+			if sum > 0xFFF {
+				g.V[0xF] = 1
+			}
+		case 0x0A:
+			f := false
+			for k := range keymap {
+				if g.keys[k] {
+					g.V[X] = k
+					f = true
+					break
+				}
+			}
+			if !f {
+				g.PC -= 2
+			}
+		case 0x29:
+			g.I = fontStart + uint16(g.V[X])*5
+		case 0x33:
+			v := g.V[X]
+			g.memory[g.I] = v / 100
+			g.memory[g.I+1] = (v / 10) % 10
+			g.memory[g.I+2] = v % 10
+		case 0x55:
+			for i := 0; i < int(X)+1; i++ {
+				g.memory[g.I+uint16(i)] = g.V[i]
+			}
+		case 0x65:
+			for i := 0; i < int(X)+1; i++ {
+				g.V[i] = g.memory[g.I+uint16(i)]
+			}
+		}
 	default:
 		fmt.Printf("Unknown opcode: 0x%04X\n", opcode)
 	}
 }
 func (g *Game) Update() error {
+	if g.delayTimer > 0 {
+		g.delayTimer--
+	}
+	if g.soundTimer > 0 {
+		g.soundTimer--
+	}
 	for i := 0; i < 10; i++ {
+		for chip8key, ebitenKey := range keymap {
+			g.keys[chip8key] = ebiten.IsKeyPressed(ebitenKey)
+		}
 		g.step()
 	}
 	return nil
@@ -195,7 +265,7 @@ func main() {
 	ebiten.SetWindowSize(640, 320)
 	ebiten.SetWindowTitle("CHIP-8")
 	game := &Game{}
-	romPath := "chip8-test-suite/bin/1-chip8-logo.ch8"
+	romPath := "chip8-test-suite/bin/Pong (alt).ch8"
 	rom, err := os.ReadFile(romPath)
 	if err != nil {
 		log.Fatalf("Failed to read file: %s", err)
